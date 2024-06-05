@@ -12,3 +12,6 @@
 - 10. 垃圾回收 (garbage collection）
 - 11. 类(关键字 class)
 - 12. 继承与多态
+
+### 参考
+[《Crafting Interpreters》](https://github.com/munificent/craftinginterpreters)
