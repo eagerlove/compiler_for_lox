@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "common.h"
-#include "scanner.h"
+#include "include/common.h"
+#include "include/scanner.h"
 
 // 字段扫描结构
 typedef struct {
@@ -108,9 +108,9 @@ static void skipWhitespace() {
     }
 }
 
-// 检查后几位是否对得上关键字
+// 检查关键字
 static TokenType checkKeyword(int start, int length,
-    const char* rest, TokenType type) {
+                              const char* rest, TokenType type) {
     if (scanner.current - scanner.start == start + length &&
         memcmp(scanner.start + start, rest, length) == 0) {
        return type;
@@ -118,7 +118,7 @@ static TokenType checkKeyword(int start, int length,
     return TOKEN_IDENTIFIER;
     }
 
-// 设定标识符类型
+// 标识符识别
 static TokenType identifierType() {
     switch (scanner.start[0]) {
         case 'a': return checkKeyword(1, 2, "nd", TOKEN_AND);

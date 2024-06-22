@@ -2,13 +2,13 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "common.h"
-#include "compiler.h"
-#include "scanner.h"
-#include "memory.h"
+#include "include/common.h"
+#include "include/compiler.h"
+#include "include/scanner.h"
+#include "include/memory.h"
 
 #ifdef DEBUG_PRINT_CODE
-#include "debug.h"
+#include "include/debug.h"
 #endif
 
 // 全局标识
@@ -708,13 +708,25 @@ static void classDeclaration() {
     Token className = parser.previous;
     uint8_t nameConstant = identifierConstant(&parser.previous);// 将类名将类对象与常量绑定
 
-    // 以类名声明并定义变量
+    // 类声明
     declareVariable();
     emitBytes(OP_CLASS, nameConstant);
     defineVariable(nameConstant);
     ClassCompiler classCompiler;
     classCompiler.enclosing = currentClass;
     currentClass = &classCompiler;
+
+    // 继承 与类名使用 < 连接
+    if (match(TOKEN_LESS)) {
+        consume(TOKEN_IDENTIFIER, "Expect superclass name.");
+        variable(false);
+        // 错误处理：继承自己
+        if (identifiersEqual(&className, &parser.previous)) {
+            error("A class can't inherit from itself.");
+        }
+        namedVariable(className, false);
+        emitByte(OP_INHERIT);
+    }
     namedVariable(className, false);
 
     consume(TOKEN_LEFT_BRACE, "Expect '{' before class body.");

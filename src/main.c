@@ -2,10 +2,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "common.h"
-#include "chunk.h"
-#include "debug.h"
-#include "vm.h"
+#include "include/common.h"
+#include "include/chunk.h"
+#include "include/debug.h"
+#include "include/vm.h"
 
 static void repl() {
 	char line[1024];

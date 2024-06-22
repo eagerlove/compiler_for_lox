@@ -1,11 +1,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "common.h"
-#include "object.h"
-#include "table.h"
-#include "value.h"
-#include "memory.h"
+#include "include/value.h"
+#include "include/table.h"
+#include "include/common.h"
+#include "include/object.h"
+#include "include/memory.h"
 
 // 负载系数 capacity/count
 #define TABLE_MAX_LOAD 0.75

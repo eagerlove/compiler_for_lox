@@ -1,11 +1,11 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "memory.h"
-#include "object.h"
-#include "table.h"
-#include "value.h"
-#include "vm.h"
+#include "include/vm.h"
+#include "include/table.h"
+#include "include/value.h"
+#include "include/memory.h"
+#include "include/object.h"
 
 // 分配多种类型
 #define ALLOCATE_OBJ(type, objectType) \

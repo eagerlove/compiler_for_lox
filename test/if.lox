@@ -1,0 +1,25 @@
+fun fib(n) {
+  if (n<2) return n;
+  return fib(n-1) + fib(n-2);
+}
+var start = clock();
+print(fib(35));
+
+print clock() - start;
+
+//fun a() { b(); }
+//fun b() { c(); }
+//fun c() {
+//  c("too", "many");
+//}
+
+//a();
+
+//if (!nil) {a = 3; print a;} 
+//else {a = 4; print a;}
+//if (true) print "good"; else print "bad";
+//while(a<5) {print a;a=a+1;}
+
+
+
+//for(var a = 2;a < 5;a=a+1){ print a;}

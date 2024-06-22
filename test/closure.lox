@@ -1,0 +1,36 @@
+var x1; 
+var y1;
+var x2;
+var y2;
+
+fun Xvector(x, y){
+  x1 = x;
+  y1 = y;
+  fun f(){
+    print x1;
+    print y1;
+  }
+    return f;
+}
+fun Yvector(x, y){
+  x2 = x;
+  y2 = y;
+  fun f(){
+    print x2;
+    print y2;
+  }
+    return f;
+}
+
+fun add(){
+    print x1+x2;
+    print y1+y2;
+}
+
+{
+  var A = Xvector(1, 2);
+  var B = Yvector(2, 3);
+  A();
+  B();
+  add();
+}

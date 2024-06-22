@@ -4,12 +4,12 @@
 #include <time.h>
 #include <stdlib.h>
 
-#include "common.h"
-#include "compiler.h"
-#include "vm.h"
-#include "debug.h"
-#include "object.h"
-#include "memory.h"
+#include "include/vm.h"
+#include "include/debug.h"
+#include "include/common.h"
+#include "include/object.h"
+#include "include/memory.h"
+#include "include/compiler.h"
 
 /*
  * 不再直接从VM中读取字节码块和ip
@@ -106,10 +106,6 @@ static void runtimeError(const char* format, ...) {
             fprintf(stderr, "%s()\n", function->name->chars);
         }
     }
-    // CallFrame* frame = &vm.frames[vm.frameCount - 1];
-    // size_t instruction = frame->ip - frame->function->chunk.code - 1;
-    // int line = frame->function->chunk.lines[instruction];
-    // fprintf(stderr, "[line %d] in script\n", line);
     resetStack();
 }
 
@@ -618,27 +614,6 @@ InterpretResult interpret(const char* source, int flag)
     pop();
     push(OBJ_VAL(closure));
     call(closure, 0);
-    // callValue(OBJ_VAL(function), 0); // 执行第一个函数帧
-    // CallFrame* frame = &vm.frames[vm.frameCount++];
-    // frame->function = function;
-    // frame->ip = function->chunk.code;
-    // frame->slots = vm.stack;
     return run(flag);
-    // Chunk chunk;
-    // initChunk(&chunk);
-
-    // if (!compile(source, &chunk)) {
-    //     freeChunk(&chunk);
-    //     return INTERPRET_COMPILE_ERROR;
-    // }
-
-    // vm.chunk = &chunk;
-    // vm.ip = vm.chunk->code;
-
-    // InterpretResult result = run();
-
-    // freeChunk(&chunk);
-    // // compile(source);
-    // return result;
 }
 

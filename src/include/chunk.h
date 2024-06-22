@@ -36,10 +36,11 @@ typedef enum {
     OP_JUMP_IF_FALSE,
     OP_LOOP,
     OP_CALL,
-    OP_INVOKE,// 方法快速调用
+    OP_INVOKE, // 方法快速调用
     OP_CLOSURE,
     OP_CLOSE_UPVALUE,
     OP_CLASS,
+    OP_INHERIT, // 继承
     OP_METHOD,
     OP_RETURN,
 
