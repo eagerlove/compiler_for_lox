@@ -7,19 +7,22 @@ NOCOLOR='\033[0m'
 
 compiler="./bin/clox-debug"
 dir="./test"
+echo > testInformation
 for file in `find ${dir} -name '*.lox'`
 do
     echo ${YELLOW}$file${NOCOLOR}
 
     start_time=$(date +%s.%N)
-	$compiler $file > testInformation
+    echo $file >> testInformation
+	$compiler $file >> testInformation
+    echo >> testInformation
     end_time=$(date +%s.%N)
     runtime=$(echo "sacle=3; ($end_time - $start_time) * 1000" | bc)
 
     if [ $? -eq 0 ]; then
-        echo "${GREEN}Success${NOCOLOR} Executed in $runtime ms"
+        echo "${GREEN}Run Success${NOCOLOR} Executed in $runtime ms"
     else
-        echo "${RED}Error${NOCOLOR}"
+        echo "${RED}Run Error${NOCOLOR}"
     fi
 done
 echo "=====Test Done====="

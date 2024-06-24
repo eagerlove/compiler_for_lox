@@ -12,8 +12,9 @@
 #include "include/compiler.h"
 
 /*
- * 不再直接从VM中读取字节码块和ip
- * 转而从栈顶的CallFrame获取
+ * VM执行过程
+ * 通过栈顶的CallFrame获取当前ip
+ * 执行指令
 */
 
 uint16_t seed = 0xACE1u;;// 随机数种子
@@ -147,22 +148,24 @@ void freeVM() {
     freeObjects();
 }
 
+// 压栈
 void push(Value value) {
     *vm.stackTop = value;
     vm.stackTop++;
 }
 
+// 出栈
 Value pop() {
     vm.stackTop--;
     return *vm.stackTop;
 }
 
-// 抓取任意字段的数据
+// 抓取给定字段在栈中的数据
 static Value peek(int distance) {
     return vm.stackTop[-1 - distance];
 }
 
-// 调用函数
+// 函数调用指令
 static bool call(ObjClosure* closure, int argCount) {
     // 检查形参与实参数量是否匹配
     if (argCount != closure->function->arity) {
@@ -186,15 +189,14 @@ static bool call(ObjClosure* closure, int argCount) {
 static bool callValue(Value callee, int argCount) {
     if (IS_OBJ(callee)) {
         switch (OBJ_TYPE(callee)) {
-            case OBJ_BOUND_METHOD: {
+            case OBJ_BOUND_METHOD: { // 类方法
                 ObjBoundMethod* bound = AS_BOUND_METHOD(callee);
                 vm.stackTop[-argCount - 1] = bound->receiver; // 接收器放置到局部槽0中
                 return call(bound->method, argCount);
             }
-            case OBJ_CLASS: {
+            case OBJ_CLASS: { // 类初始化函数
                 ObjClass* class = AS_CLASS(callee);
-                vm.stackTop[-argCount - 1] = OBJ_VAL(newInstance(class));
-                // 每创建一个新实例 自动调用init()
+                vm.stackTop[-argCount - 1] = OBJ_VAL(newInstance(class)); // 每创建一个新实例 自动调用init()
                 Value initializer;
                 if (tableGet(&class->methods, vm.initString,
                              &initializer)) {
@@ -206,11 +208,11 @@ static bool callValue(Value callee, int argCount) {
                 }
                 return true;
             }
-            case OBJ_CLOSURE:
-                return call(AS_CLOSURE(callee), argCount);
+            case OBJ_CLOSURE: // 闭包函数
+                return call(AS_CLOSURE(callee), argCount); // 所有的函数都默认作为闭包处理
             // case OBJ_FUNCTION: 
             //     return call(AS_FUNCTION(callee), argCount);
-            case OBJ_NATIVE:{
+            case OBJ_NATIVE:{ // 库函数
                 NativeFn native = AS_NATIVE(callee);
                 Value result = native(argCount, vm.stackTop - argCount);
                 vm.stackTop -= argCount + 1;
@@ -491,6 +493,15 @@ static InterpretResult run(int flag) {
                 push(value);
                 break;
             }
+            case OP_GET_SUPER: {
+                ObjString* name = READ_STRING();
+                ObjClass* superclass = AS_CLASS(pop());
+
+                if (!bindMethod(superclass, name)) {
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                break;
+            }
             case OP_EQUAL: {
                 Value b = pop();
                 Value a = pop();
@@ -555,6 +566,17 @@ static InterpretResult run(int flag) {
                 frame = &vm.frames[vm.frameCount - 1];
                 break;
             }
+            case OP_SUPER_INVOKE: {
+                ObjString* method = READ_STRING();
+                int argCount = READ_BYTE();
+                ObjClass* superclass = AS_CLASS(pop());
+                if (!invokeFromClass(superclass, method, argCount)) {
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                // 调用成功 刷新frame
+                frame = &vm.frames[vm.frameCount - 1];
+                break;
+            }
             case OP_CLOSURE: {
                 ObjFunction* function = AS_FUNCTION(READ_CONSTANT());
                 ObjClosure* closure = newClosure(function);
@@ -579,6 +601,17 @@ static InterpretResult run(int flag) {
             case OP_CLASS:
                 push(OBJ_VAL(newClass(READ_STRING())));
                 break;
+            case OP_INHERIT: {
+                Value superClass = peek(1);
+                if (!IS_CLASS(superClass)) { // 阻止继承非类对象
+                    runtimeError("SuperClass must be a class.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                ObjClass* subClass = AS_CLASS(peek(0));
+                tableAddAll(&AS_CLASS(superClass)->methods, &subClass->methods); // 将父类方法绑定到子类
+                pop();
+                break;
+            }
             case OP_METHOD:
                 defineMethod(READ_STRING());
                 break;

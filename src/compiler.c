@@ -19,7 +19,7 @@ typedef struct {
     bool panicMode;
 } Parser;
 
-// 操作符优先级
+// 不同操作符优先级
 typedef enum {
     PREC_NONE,
     PREC_ASSIGNMENT,  // =
@@ -38,11 +38,11 @@ typedef enum {
 // 函数类型
 typedef void (*ParseFn)(bool canAssign);
 
-// 虚函数->前，中缀运算符 
+// 运算符号规则
 typedef struct {
-    ParseFn prefix;
-    ParseFn infix;
-    Precedence precedence;
+    ParseFn prefix; // 前运算符
+    ParseFn infix;  // 中缀运算符
+    Precedence precedence; // 优先级
 } ParseRule;
 
 // 局部变量
@@ -80,6 +80,7 @@ typedef struct Compiler{
 // 编译类结构体(提供最近邻外层的类信息)
 typedef struct ClassCompiler {
     struct ClassCompiler* enclosing;
+    bool hasSuperclass;
 } ClassCompiler;
 
 Parser parser;
@@ -132,7 +133,7 @@ static void advance() {
     }
 }
 
-// 验证标识类型是否符合预期
+// 验证当前标识类型是否正确
 static void consume(TokenType type, const char* message) {
     if (parser.current.type == type) {
         advance();
@@ -211,8 +212,9 @@ static void emitConstant(Value value) {
     emitBytes(OP_CONSTANT, makeConstant(value));
 }
 
-// 计算真实偏移量并替换占位符
+// 计算真实偏移量
 static void patchJump(int offset) {
+    // jump 指令占两字节
     int jump = currentChunk()->count - offset - 2;
 
     if (jump > UINT16_MAX) {
@@ -305,7 +307,7 @@ static bool identifiersEqual(Token* a, Token* b) {
     return memcmp(a->start, b->start, a->length) == 0;
 }
 
-// 向后检索局部变量 无则返回-1
+// 向栈指后检索局部变量 无则返回-1
 static int resolveLocal(Compiler* compiler, Token* name) {
     int i = 0;
     for (i = compiler->localCount - 1; i >= 0; i--) {
@@ -403,7 +405,7 @@ static void markInitialized() {
         current->scopeDepth;
 }
 
-// 定义变量
+// 定义全局变量
 static void defineVariable(uint8_t global) {
     if (current->scopeDepth > 0) {
         markInitialized();
@@ -428,7 +430,7 @@ static uint8_t argumentList() {
     return argCount;
 }
 
-// and: 与功能
+// and: 与操作
 static void and_(bool canAssign) {
     int endJump = emitJump(OP_JUMP_IF_FALSE);
 
@@ -551,7 +553,38 @@ static void variable(bool canAssign) {
     namedVariable(parser.previous, canAssign);
 }
 
-// this 以局部变量形式存在
+// super关键字
+static Token syntheticToken(const char* text) {
+    Token token;
+    token.start = text;
+    token.length = (int)strlen(text);
+    return token;
+}
+
+// super 超类调用
+static void super_(bool canAssign) {
+    if (!currentClass) {
+        error("Can't use 'super' outside a class.");
+    } else if (!currentClass->hasSuperclass) {
+        error("Can't use 'super' in a no super class");
+    } 
+    // super.method
+    consume(TOKEN_DOT, "Expect '.' after 'super'.");
+    consume(TOKEN_IDENTIFIER, "Expect superclass method name.");
+    uint8_t name = identifierConstant(&parser.previous); // 存储方法名
+    namedVariable(syntheticToken("this"), false); // 压this当前对象入栈
+    if (match(TOKEN_LEFT_PAREN)) { // 寻找带参数列表的调用
+        uint8_t argcount = argumentList();
+        namedVariable(syntheticToken("super"), false); // 压入super父类引用入栈
+        emitBytes(OP_SUPER_INVOKE, name); // 类方法快速调用
+        emitByte(argcount);
+    } else {
+        namedVariable(syntheticToken("super"), false);
+        emitBytes(OP_GET_SUPER, name);
+    }
+}
+
+// this 类对象调用
 static void this_(bool canAssign) {
     if (current == NULL) {
         error("Can't use 'this' outside of a class.");
@@ -607,7 +640,7 @@ ParseRule rules[] = {
     [TOKEN_OR]               = {NULL,     or_,    PREC_OR},
     [TOKEN_PRINT]            = {NULL,     NULL,   PREC_NONE},
     [TOKEN_RETURN]           = {NULL,     NULL,   PREC_NONE},
-    [TOKEN_SUPER]            = {NULL,     NULL,   PREC_NONE},
+    [TOKEN_SUPER]            = {super_,   NULL,   PREC_NONE},
     [TOKEN_THIS]             = {this_,    NULL,   PREC_NONE},
     [TOKEN_TRUE]             = {literal,  NULL,   PREC_NONE},
     [TOKEN_VAR]              = {NULL,     NULL,   PREC_NONE},
@@ -714,20 +747,31 @@ static void classDeclaration() {
     defineVariable(nameConstant);
     ClassCompiler classCompiler;
     classCompiler.enclosing = currentClass;
+    classCompiler.hasSuperclass = false;
     currentClass = &classCompiler;
 
-    // 继承 与类名使用 < 连接
+    // 继承：子类与父类使用 < 连接
     if (match(TOKEN_LESS)) {
         consume(TOKEN_IDENTIFIER, "Expect superclass name.");
         variable(false);
+
         // 错误处理：继承自己
         if (identifiersEqual(&className, &parser.previous)) {
             error("A class can't inherit from itself.");
         }
+
+        // super局部变量：存储父类引用
+        beginScope();
+        addLocal(syntheticToken("super"));
+        defineVariable(0);
+
+        // 创建继承子类
         namedVariable(className, false);
         emitByte(OP_INHERIT);
+        classCompiler.hasSuperclass = true;
     }
     namedVariable(className, false);
+
 
     consume(TOKEN_LEFT_BRACE, "Expect '{' before class body.");
     while (!check(TOKEN_RIGHT_BRACE) && !check(TOKEN_EOF)) {
@@ -735,6 +779,9 @@ static void classDeclaration() {
     }
     consume(TOKEN_RIGHT_BRACE, "Expect '}' after class body.");
     emitByte(OP_POP);
+    if (classCompiler.hasSuperclass) {
+        endScope(); // 结束super作用域
+    }
     currentClass = currentClass->enclosing;
 }
 
