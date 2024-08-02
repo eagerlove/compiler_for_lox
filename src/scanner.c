@@ -19,19 +19,19 @@ void initScanner(const char* source) {
     scanner.line = 1;
 }
 
-// 检查字母
+// 变量名字母检查
 static bool isAlpha(char c) {
     return (c >= 'a' && c <= 'z') ||
            (c >= 'A' && c <= 'Z') ||
            c ==  '_';
 }
 
-// 检查数字
+// 变量名数字检查
 static bool isDigit(char c) {
     return c >='0' && c <='9';
 }
 
-// 检查是否到达末尾
+// 检查当前行是否结束
 static bool isAtEnd() {
     return *scanner.current == '\0';
 }
@@ -118,11 +118,21 @@ static TokenType checkKeyword(int start, int length,
     return TOKEN_IDENTIFIER;
     }
 
-// 标识符识别
+// 标识符识别 AST树
 static TokenType identifierType() {
     switch (scanner.start[0]) {
         case 'a': return checkKeyword(1, 2, "nd", TOKEN_AND);
-        case 'c': return checkKeyword(1, 4, "lass", TOKEN_CLASS);
+        case 'b': return checkKeyword(1, 4, "reak", TOKEN_BREAK);
+        case 'c': 
+            if (scanner.current - scanner.start > 1) {
+                switch (scanner.start[1]) {
+                    case 'l': return checkKeyword(2, 3, "ass", TOKEN_CLASS);
+                    case 'o': return checkKeyword(2, 6, "ntinue", TOKEN_CONTINUE);
+                }
+            }
+            break;
+        return checkKeyword(1, 4, "lass", TOKEN_CLASS);
+
         case 'e': return checkKeyword(1, 3, "lse", TOKEN_ELSE);
         case 'f': 
             if (scanner.current - scanner.start > 1) {
@@ -165,7 +175,7 @@ static Token identifier() {
     return makeToken(identifierType());
 }
 
-// 由于lox中我们只定义了浮点数，通过小数点判断并处理数
+// 浮点数
 static Token number() {
     while (isDigit(peek())) advance();
 

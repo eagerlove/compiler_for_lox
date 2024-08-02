@@ -19,7 +19,7 @@ typedef enum {
     // 关键字
     TOKEN_FOR, TOKEN_FUN, TOKEN_IF, TOKEN_NIL, TOKEN_OR,
     TOKEN_PRINT, TOKEN_RETURN, TOKEN_SUPER, TOKEN_THIS,
-    TOKEN_TRUE, TOKEN_VAR, TOKEN_WHILE,
+    TOKEN_TRUE, TOKEN_VAR, TOKEN_WHILE, TOKEN_BREAK, TOKEN_CONTINUE,
     TOKEN_ERROR, TOKEN_EOF
 } TokenType;
 
@@ -34,7 +34,7 @@ typedef struct {
 // 初始化扫描器
 void initScanner(const char* source);
 
-// 字段总分析返回运算符标识
+// 运算符标识
 Token scanToken();
 
 #endif

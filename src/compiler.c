@@ -32,7 +32,6 @@ typedef enum {
     PREC_UNARY,       // ! -
     PREC_CALL,        // . ()
     PREC_PRIMARY
-
 } Precedence;
 
 // 函数类型
@@ -85,10 +84,21 @@ typedef struct ClassCompiler {
 
 Parser parser;
 Compiler* current = NULL;
-ClassCompiler* currentClass = NULL; // 不在任何类中
-//Chunk* compilingChunk;
+ClassCompiler* currentClass = NULL;
 
-// 通过函数访问当前程序块
+// break跳转
+typedef struct BreakJump {
+    int scopeDepth;
+    int offset;
+    struct BreakJump* next;
+} BreakJump;
+
+int innermostLoopStart = -1;
+int innermostLoopScopeDepth = 0;
+
+BreakJump* breakJumps = NULL;
+
+// 当前程序块
 static Chunk* currentChunk() {
     return &current->function->chunk;
 }
@@ -111,12 +121,12 @@ static void errorAt(Token* token, const char* message) {
     parser.hadError = true;
 }
 
-// 报告当前标识错误
+// 报告错误
 static void errorAtCurrent(const char* message) {
     errorAt(&parser.current, message);
 }
 
-// 报告前一个标识错误
+// 报告错误
 static void error(const char* message) {
     errorAt(&parser.previous, message);
 }
@@ -140,7 +150,7 @@ static void consume(TokenType type, const char* message) {
         return;
     }
 
-    errorAtCurrent(message);
+    errorAtCurrent(message); // 报告错误
 }
 
 // 检查类型
@@ -155,13 +165,13 @@ static bool match(TokenType type) {
     return true;
 }
 
-// 写入单操作指令
+// 无操作数指令
 static void emitByte(uint8_t byte) {
     writeChunk(currentChunk(), byte, parser.previous.line);
 }
 
 
-// 写入操作码与操作数
+// 多操作数指令
 static void emitBytes(uint8_t byte1, uint8_t byte2) {
     emitByte(byte1);
     emitByte(byte2);
@@ -223,6 +233,20 @@ static void patchJump(int offset) {
 
     currentChunk()->code[offset] = (jump >> 8) & 0xff;
     currentChunk()->code[offset + 1] = jump & 0xff;
+}
+
+static void patchBreakJumps() {
+    while (breakJumps != NULL) {
+        if (breakJumps->scopeDepth >= innermostLoopScopeDepth) {
+            patchJump(breakJumps->offset);
+
+            BreakJump* temp = breakJumps;
+            breakJumps = breakJumps->next;
+            FREE(BreakJump, temp);
+        } else {
+            break;
+        }
+    }
 }
 
 // 初始化编译器
@@ -291,9 +315,9 @@ static void endScope() {
 static void expression();
 static void statement();
 static void declaration();
-static ParseRule* getRule(TokenType type);
 static void synchronize();
 static void parsePrecedence(Precedence precedence);
+static ParseRule* getRule(TokenType type);
 
 // 将变量名存入常量表并返回索引
 static uint8_t identifierConstant(Token* name) {
@@ -367,7 +391,7 @@ static void addLocal(Token name) {
     }
     Local* local = &current->locals[current->localCount++];
     local->name = name;
-    local->depth = -1;// 未定义
+    local->depth = -1; // 默认表示变量未定义
     local->isCaptured = false;
 }
 
@@ -398,7 +422,7 @@ static uint8_t parseVariable(const char* errorMessage) {
     return identifierConstant(&parser.previous);
 }
 
-// 标记变量已被初始化
+// 变量初始化标记
 static void markInitialized() {
     if (current->scopeDepth == 0) return;// 判断是否处于局部作用域
     current->locals[current->localCount - 1].depth =
@@ -414,13 +438,13 @@ static void defineVariable(uint8_t global) {
     emitBytes(OP_DEFINE_GLOBAL, global);
 }
 
-// 参数列表
+// 函数参数列表
 static uint8_t argumentList() {
     uint8_t argCount = 0;
     if (!check(TOKEN_RIGHT_PAREN)) {
         do {
             expression();
-            if (argCount == 255) {
+            if (argCount == 255) { // 函数参数最大不超过255个
                 error("Can't have more than 255 arguments.");
             }
             argCount++;
@@ -439,7 +463,7 @@ static void and_(bool canAssign) {
     patchJump(endJump);
 }
 
-// 加减乘除中缀操作符解析
+// 加减乘除等中缀操作符解析函数
 static void binary(bool canAssign) {
     TokenType operatorType = parser.previous.type;
     ParseRule* rule = getRule(operatorType);
@@ -745,12 +769,13 @@ static void classDeclaration() {
     declareVariable();
     emitBytes(OP_CLASS, nameConstant);
     defineVariable(nameConstant);
+
     ClassCompiler classCompiler;
     classCompiler.enclosing = currentClass;
     classCompiler.hasSuperclass = false;
     currentClass = &classCompiler;
 
-    // 继承：子类与父类使用 < 连接
+    // 继承：<
     if (match(TOKEN_LESS)) {
         consume(TOKEN_IDENTIFIER, "Expect superclass name.");
         variable(false);
@@ -829,8 +854,13 @@ static void forStatement() {
         expressionStatement();
     }
 
+    // 临时储存循环起始点和深度
+    int tmpLoopStart = innermostLoopStart;
+    int tmpLoopScopeDepth = innermostLoopScopeDepth;
+
     // 记录偏移量以便跳转
-    int loopStart = currentChunk()->count;
+    innermostLoopStart = currentChunk()->count;
+    innermostLoopScopeDepth = current->scopeDepth; // 当前嵌套深度
     // 条件子句
     int exitJump = -1;
     if (!match(TOKEN_SEMICOLON)) {
@@ -850,20 +880,24 @@ static void forStatement() {
         emitByte(OP_POP);
         consume(TOKEN_RIGHT_PAREN, "Expect ')' after for clauses.");
 
-        //每次迭代结束后跳转到增量表达式
-        emitLoop(loopStart);
-        loopStart = incrementStart;
+        // 每次迭代结束后跳转到增量表达式
+        emitLoop(innermostLoopStart);
+        innermostLoopStart = incrementStart;
         
         patchJump(bodyJump);
     }
 
     statement();
-    emitLoop(loopStart);
+    emitLoop(innermostLoopStart);
     // 保持堆栈高度
     if (exitJump != -1) {
         patchJump(exitJump);
         emitByte(OP_POP);
     }
+
+    patchBreakJumps();
+    innermostLoopStart = tmpLoopStart;
+    innermostLoopScopeDepth = tmpLoopScopeDepth;
     endScope();
 }
 
@@ -872,7 +906,7 @@ static void ifStatement() {
     consume(TOKEN_LEFT_PAREN, "Expect '(' after 'if'.");
     expression();
     consume(TOKEN_RIGHT_PAREN, "Expect ')' after condition.");
-    // 占位符 
+    // 未确定跳转距离前的占位符
     int thenJump = emitJump(OP_JUMP_IF_FALSE);
     emitByte(OP_POP);
     statement();
@@ -884,7 +918,7 @@ static void ifStatement() {
     patchJump(elseJump);
 }
 
-// 解析声明
+// 类,函数,变量及其他声明
 static void declaration() {
     if (match(TOKEN_CLASS)) {
         classDeclaration();
@@ -907,13 +941,14 @@ static void printStatement() {
 
 // 返回语句
 static void returnStatement() {
+    // 普通函数返回
     if (current->type == TYPE_SCRIPT) {
         error("Can't return from top-level code.");
     }
     if (match(TOKEN_SEMICOLON)) {
         emitReturn();
     } else {
-        // 初始化器不返回任何值
+        // 构造函数
         if (current->type == TYPE_INITIALIZER) {
             error("Can't return a value from an initializer.");
         }
@@ -925,7 +960,12 @@ static void returnStatement() {
 
 // while语句
 static void whileStatement() {
-    int loopStart = currentChunk()->count;
+    int tmpLoopStart = innermostLoopStart;
+    int tmpLoopScopeDepth = innermostLoopScopeDepth;
+
+    innermostLoopStart = currentChunk()->count;
+    innermostLoopScopeDepth = current->scopeDepth;
+
     consume(TOKEN_LEFT_PAREN, "Expect '(' after 'while'.");
     expression();
     consume(TOKEN_RIGHT_PAREN, "Expect ')' after codition.");
@@ -934,10 +974,47 @@ static void whileStatement() {
     emitByte(OP_POP);
     statement();
 
-    emitLoop(loopStart);
+    emitLoop(innermostLoopStart);
     patchJump(exitJump);
     emitByte(OP_POP);
 
+    patchBreakJumps();
+    innermostLoopStart = tmpLoopStart;
+    innermostLoopScopeDepth = tmpLoopScopeDepth;
+}
+
+// break语句
+static void breakStatement() {
+    if (innermostLoopStart == -1) {
+        error("Can't use 'break' outside of loop.");
+    }
+    consume(TOKEN_SEMICOLON, "Expect ';' after 'break' statement.");
+    for (int i = current->localCount - 1;
+         i >= 0 && current->locals[i].depth > innermostLoopScopeDepth;
+         i--) {
+            emitByte(OP_POP);
+    }
+
+    int jmp = emitJump(OP_JUMP);
+    BreakJump* breakJump = ALLOCATE(BreakJump, 1);
+    breakJump->scopeDepth = innermostLoopScopeDepth;
+    breakJump->offset = jmp;
+    breakJump->next = breakJumps;
+    breakJumps = breakJump;
+}
+
+// continue语句
+static void continueStatement() {
+    if (innermostLoopStart == -1) {
+        error("Can't use 'continue' outside of loop.");
+    }
+    consume(TOKEN_SEMICOLON, "Expect ';' after 'continue' statement.");
+    for (int i = current->localCount - 1;
+         i >= 0 && current->locals[i].depth > innermostLoopScopeDepth;
+         i--) {
+            emitByte(OP_POP);
+    }
+    emitLoop(innermostLoopStart); // 跳转到循环起始点
 }
 
 // 错误同步
@@ -976,7 +1053,11 @@ static void statement() {
         returnStatement();
     }else if (match(TOKEN_WHILE)){
         whileStatement();
-    }else if (match(TOKEN_LEFT_BRACE)) {
+    } else if (match(TOKEN_CONTINUE)) {
+        continueStatement();
+    } else if (match(TOKEN_BREAK)) {
+        breakStatement();
+    } else if (match(TOKEN_LEFT_BRACE)) {
         beginScope();
         block();
         endScope();
@@ -995,22 +1076,9 @@ ObjFunction* compile(const char* source) {
     while (!match(TOKEN_EOF)) {
         declaration();
     }
-    /*expression();
-    consume(TOKEN_EOF, "Expect end of expression.");*/
+
     ObjFunction* function = endCompiler();
     return parser.hadError ? NULL : function;
-    /* int line = -1;
-    for (;;) {
-        Token token = scanToken();
-        if (token.line != line) {
-            printf("%4d ", token.line);
-            line = token.line;
-        } else {
-            printf("    | ");
-        }
-        printf("%2d  '%.*s'\n", token.type, token.length, token.start);
-        if (token.type == TOKEN_EOF) break;
-    } */
 }
 
 void markCompilerRoots() {
