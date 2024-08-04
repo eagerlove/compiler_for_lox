@@ -149,7 +149,6 @@ static void consume(TokenType type, const char* message) {
         advance();
         return;
     }
-
     errorAtCurrent(message); // 报告错误
 }
 
@@ -169,7 +168,6 @@ static bool match(TokenType type) {
 static void emitByte(uint8_t byte) {
     writeChunk(currentChunk(), byte, parser.previous.line);
 }
-
 
 // 多操作数指令
 static void emitBytes(uint8_t byte1, uint8_t byte2) {

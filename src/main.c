@@ -12,10 +12,10 @@ static void repl() {
 	int flag = 1;
 
 	printf("Clox 1.5.0 (main, Agu 1 2023, 06:56:58) ");
-	printf("[GCC 7.5.0] on Linux\n");
-	printf("[Command Line Mode] Type \"exit();\" to exit.\n");
+	printf("[Command Line Mode]\n");
+	printf("Type \"exit();\" to exit.\n");
 	for (;;) {
-		printf(">_O ");
+		printf(">>> ");
 
 		if (!fgets(line, sizeof(line), stdin)) {
 			printf("\n");

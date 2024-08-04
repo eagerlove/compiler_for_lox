@@ -19,6 +19,9 @@
 // 回收日志
 // #define DEBUG_LOG_GC
 
+// 针对x86-64架构的值类型优化 
+// #define NAN_BOXING
+
 // 局部变量最大数量
 #define UINT8_COUNT (UINT8_MAX + 1)
 

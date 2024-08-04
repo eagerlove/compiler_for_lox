@@ -210,8 +210,6 @@ static bool callValue(Value callee, int argCount) {
             }
             case OBJ_CLOSURE: // 闭包函数
                 return call(AS_CLOSURE(callee), argCount); // 所有的函数都默认作为闭包处理
-            // case OBJ_FUNCTION: 
-            //     return call(AS_FUNCTION(callee), argCount);
             case OBJ_NATIVE:{ // 库函数
                 NativeFn native = AS_NATIVE(callee);
                 Value result = native(argCount, vm.stackTop - argCount);
@@ -246,6 +244,7 @@ static bool invoke(ObjString* name, int argCount) {
         return false;
     }
     ObjInstance* instance = AS_INSTANCE(receiver);
+
     // 检查字段
     Value value;
     if (tableGet(&instance->fields, name, &value)) {
@@ -330,6 +329,22 @@ static void concatenate() {
     push(OBJ_VAL(result));
 }
 
+static void mulcombine(int times, ObjString* a) {
+    int length = a->length * times;
+    char* chars = ALLOCATE(char, length + 1);
+    int i = 0;
+    while(i < times) {
+        memcpy(chars + (a->length * i), a->chars, a->length);
+        i += 1;
+    }
+    chars[length] = '\0';
+
+    ObjString* result = takeString(chars, length);
+    pop();
+    pop();
+    push(OBJ_VAL(result));
+}
+
 // 判断语句是否为非(NIL和FALSE皆为非)
 static bool isFalsey(Value value) {
     return IS_NIL(value) || (IS_BOOL(value) && !AS_BOOL(value));
@@ -364,7 +379,6 @@ static InterpretResult run(int flag) {
     for (;;){
 
 #ifdef DEBUG_TRACE_EXECUTION
-    //printf("        ");
     for (Value* slot = vm.stack; slot < vm.stackTop; slot++) {
         printf("[");
         printValue(*slot);
@@ -424,7 +438,7 @@ static InterpretResult run(int flag) {
                 pop();
                 break;
             }
-            case OP_NOT: 
+            case OP_NOT:
                 push(BOOL_VAL(isFalsey(pop())));
                 break;
             case OP_NEGATE: {
@@ -508,8 +522,8 @@ static InterpretResult run(int flag) {
                 push(BOOL_VAL(valuesEqual(a, b)));
                 break;
             }
-            case OP_GREATER:  BINARY_OP(BOOL_VAL, >); break;
-            case OP_LESS:     BINARY_OP(BOOL_VAL, <); break;
+            case OP_GREATER: BINARY_OP(BOOL_VAL, >); break;
+            case OP_LESS:    BINARY_OP(BOOL_VAL, <); break;
             case OP_ADD: {
                 if (IS_STRING(peek(0)) && IS_STRING(peek(1))) {
                     concatenate();
@@ -518,15 +532,25 @@ static InterpretResult run(int flag) {
                     double a = AS_NUMBER(pop());
                     push(NUMBER_VAL(a + b));
                 } else {
-                    runtimeError(
-                        "Operators must be two numbers or two strings.");
+                    runtimeError("Operators must be two numbers or two strings.");
                     return INTERPRET_RUNTIME_ERROR;
                 }
                 break;
-                }
-
+            }
             case OP_SUBTRACT: BINARY_OP(NUMBER_VAL, -); break;
-            case OP_MULTIPLY: BINARY_OP(NUMBER_VAL, *); break;
+            case OP_MULTIPLY: {
+                if (IS_NUMBER(peek(0)) && IS_STRING(peek(1))) {
+                    mulcombine((int)AS_NUMBER(peek(0)), AS_STRING(peek(1)));
+                } else if (IS_NUMBER(peek(1)) && IS_STRING(peek(0))) {
+                    mulcombine((int)AS_NUMBER(peek(1)), AS_STRING(peek(0)));
+                }else if (IS_NUMBER(peek(0)) && IS_NUMBER(peek(1))){
+                    BINARY_OP(NUMBER_VAL, *);
+                } else {
+                    runtimeError("Operators must be two numbers or strings.");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                break;
+            }
             case OP_DIVIDE:   BINARY_OP(NUMBER_VAL, /); break;
             case OP_PRINT: {
                 printValue(pop());

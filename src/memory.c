@@ -50,8 +50,7 @@ void markObject(Obj* object) {
     // 标记对象
     object->isMarked = true;
 
-    // 遍历所有已标记的灰色对象
-    // 并将其添加到工作列表中
+    // 遍历所有已标记的灰色对象并将其添加到工作列表中
     if (vm.grayCapacity < vm.grayCount + 1) {
         vm.grayCapacity = GROW_CAPACITY(vm.grayCapacity);
         vm.grayStack = (Obj**)realloc(vm.grayStack,
@@ -122,6 +121,7 @@ static void blackenObject(Obj* object) {
     }
 }
 
+// 释放不再使用的变量
 static void freeObject(Obj* object) {
 #ifdef DEBUG_LOG_GC
     printf("%p free type %d\n", (void*)object, object->type);
@@ -212,7 +212,7 @@ static void traceReferences() {
     }
 }
 
-// 清理不再使用的变量(即删除链表节点)
+// 清理不再使用的变量
 static void sweep() {
     Obj* previous = NULL;
     Obj* object = vm.objects;
@@ -256,6 +256,7 @@ vm.nextGC = vm.bytesAllocated * GC_HEAP_GROW_FACTOR;
 #endif
 }
 
+// 释放所有变量对象
 void freeObjects() {
     Obj* object = vm.objects;
     while (object != NULL) {

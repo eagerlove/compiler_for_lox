@@ -12,6 +12,9 @@ SRC_C := $(foreach dir, $(SRC_DIR), $(wildcard $(dir)/*.c))
 DEBUG_OBJ_C := $(addprefix $(BUILD_DEBUG)/,$(patsubst %.c,%.o,$(notdir $(SRC_C))))
 RELEASE_OBJ_C := $(addprefix $(BUILD_RELEASE)/,$(patsubst %.c,%.o,$(notdir $(SRC_C))))
 
+ifeq ($(shell arch), x86_64)
+	DEBUG_OPTIONS+= -DNAN_BOXING
+endif
 $(RELEASE_TARGET): $(RELEASE_OBJ_C)
 	$(CC) -o $@ $^
 
